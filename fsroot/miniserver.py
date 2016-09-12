@@ -7,20 +7,9 @@
 
 import socket
 import os
+import gc
+from httphandlers import send_err, send_bad_request, handle_bad_method, handle_put
 
-def send_err(clisock, code, reason):
-    print(code, reason)
-    clisock.write('HTTP/1.0 ')
-    clisock.write(str(code).encode('ascii'))
-    clisock.write(' ')
-    clisock.write(reason)
-    clisock.write('\r\n\r\n')
-    clisock.write(reason)
-    clisock.close()
-    
-def send_bad_request(clisock):
-    return(send_err(clisock, 400, b'Bad request'))
-        
 def accept_conn(sock):
     clisock, *junk = sock.accept()
     del junk
@@ -28,6 +17,8 @@ def accept_conn(sock):
     # in the time, we can close the socket and serve someone else.
     clisock.settimeout(10.0)
     
+    handler = handle_bad_method
+    content_length = 0
     try:            
         # Try read a HTTP/1.0 request.
         # We need to find where the GET line ends - this should be the
@@ -46,16 +37,27 @@ def accept_conn(sock):
         # Consume rest of headers. Ignore.
         while True:
             line = clisock.readline(60)
-            if len(line) == 0:
+            if len(line) == 0 or line[0] in (10, 13): # cr or lf: end of headers
                 break
-            if line[0] in (10, 13): # cr or lf: end of headers
-                break
+            # Get content-length.
+            line = line.lower()
+            if line.startswith(b'content-length:'):
+                content_length = int(line[line.find(b':') + 1:])
         del line
         # Check for bad things.
         if not http_ver.startswith(b'HTTP'): # http 0.9 request?
             return send_bad_request(clisock)
-        if method != b'GET':
-            return send_err(clisock, 405, b'Bad Method')
+        # Check for some types of bad uri.
+        if (b'\0' in uri or
+            b'../' in uri or
+            b'/./' in uri):
+                return send_err(clisock, 403, b'Denied')
+
+        if method == b'GET':
+            handler = handle_get
+        if method == b'PUT':
+            handler = handle_put
+            
         print(firstline)
         if not uri.startswith(b'/'):
             return send_err(clisock, 404, b'Not found0')
@@ -64,15 +66,10 @@ def accept_conn(sock):
         # Timeout reading uri?
         clisock.close()
         return
-    return serve_response(clisock, uri)
+    return handler(clisock, uri, content_length)
         
-def serve_response(clisock, uri):
+def handle_get(clisock, uri, content_length):
     # Serve uri to client.
-    # Check for some types of bad uri.
-    if (b'\0' in uri or
-        b'../' in uri or
-        b'/./' in uri):
-            return send_err(clisock, 403, b'Denied')
      
     # Check file exists.
     uri_without_slash = uri
@@ -149,9 +146,9 @@ def dir_redirect(clisock, uri):
     clisock.close()
         
 def dir_index(clisock, uri):
-    clisock.write(b'HTTP/1.0 200 OK\r\n')
-    clisock.write(b'Content-type: text/html; charset=utf-8\r\n')        
-    clisock.write(b'\r\n')
+    clisock.write(b'HTTP/1.0 200 OK\r\n'
+        b'Content-type: text/html; charset=utf-8\r\n'
+        b'\r\n')
     
     title = b'Directory listing ' + escape_filename(uri) + b'/'
     clisock.write(b'<!DOCTYPE html><html><head><title>')
@@ -221,14 +218,11 @@ def start_server():
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind( ('', 80) ); sock.listen(1)
     
-    if False:
-        # Set asynchronous handler
-        sock.setsockopt(socket.SOL_SOCKET, 20, accept_conn)
-        print("Asynchronous web server setup.")
-    else:
-        print("Synchronous web server running...")
-        try:
-            while True:
-                accept_conn(sock)
-        finally:
-            sock.close()
+    print("Synchronous web server running...")
+    gc.collect()
+    print("gc.mem_free=", gc.mem_free())
+    try:
+        while True:
+            accept_conn(sock)
+    finally:
+        sock.close()

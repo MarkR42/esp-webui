@@ -25,7 +25,19 @@ function trigger_upload()
         target_url.href += file.name;
         console.log(target_url.toString());
         xhr.open("PUT", target_url.toString());
+        xhr.addEventListener("load", upload_done);
         xhr.send(file);
+    }
+    function upload_done() {
+        var st = this.status;
+        console.log("Status=" + st);
+        if ((st == 200) || (st == 201)) {
+            // Reload the page to show newly created file.
+            // window.location.reload();
+            window.location = window.location.href;
+        } else {
+            console.log("Sorry, it did not work");
+        }
     }
     
 }
