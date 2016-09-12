@@ -36,4 +36,10 @@ li > .filemeta {
     min-width: 6em;
     text-align: right;
 }
+
+#controls {
+    display: block;
+    position: absolute;
+    top: 0.5em;
+    right: 0.5em;
 }
