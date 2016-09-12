@@ -1,0 +1,39 @@
+/*
+ * css for web interface e.g.
+ * directory index pages.
+ */
+
+body {
+    font-family: sans-serif;
+    font-size: 130%;
+}
+
+h1 {
+    background-color: lightgreen;
+}
+
+/* Directory, file */
+li.d, li.f {
+    line-height: 150%;
+}
+
+/* For odd/even style. */
+.odd {
+    background-color: #eee;
+}
+
+li:hover {
+    background-color: lightgreen;
+}
+
+li > a {
+    display: inline-block;
+    min-width: 18em;
+}
+
+li > .filemeta {
+    display: inline-block;
+    min-width: 6em;
+    text-align: right;
+}
+}

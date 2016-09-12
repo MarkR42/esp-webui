@@ -8,15 +8,12 @@ rm -f fs.img
 
 # Use a wacky mformat command to initialise the drive.
 
-# -T = total size, in sectors, sectors are 4k.
-# -d 1 = number of copies of fat.
-# mformat -C -T 256 -i fs.img  -h 255 -s 63 -S 5 -d 1 ::
-
 # Note that we seem to need a 4096 sector size, or Micropython
 # won't access the fs.
-# -s = sectors per cluster
+# -S = sector size.
+# -s = sectors per cluster (smaller is better usually)
 # -i = volume id, -n = volume name
-mkfs.fat -C -f 1 -S 4096 -s 1 fs.img 1024 -i 0000002b -n 'WEBUI'
+mkfs.fat -C -f 1 -S 4096 -s 1 fs.img 1024 -i 0000002b -n 'ESP-WEBUI'
 
 # Make tmp directory to build the fs.
 rm -rf tmp

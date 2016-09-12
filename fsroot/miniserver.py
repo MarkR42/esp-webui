@@ -24,6 +24,8 @@ def send_bad_request(clisock):
 def accept_conn(sock):
     clisock, *junk = sock.accept()
     del junk
+    # Set a timeout, so that if we don't receive a proper request
+    # in the time, we can close the socket and serve someone else.
     clisock.settimeout(10.0)
     
     try:            
@@ -97,11 +99,17 @@ def serve_response(clisock, uri):
     except OSError:
         return send_err(clisock, 404, b'Cannot open file')
     with fh:
-        # Send HTTP response
+        # Send HTTP response: static file.
         clisock.write(b'HTTP/1.0 200 OK\r\n')
         # response headers
         clisock.write(b'Content-length: %d\r\n' % (file_size,))
         clisock.write(b'Content-type: %s\r\n' % (get_content_type(uri),))
+        # Cause file to be cached by browser: this is important to avoid
+        # delays when the same file must be fetched repeatedly.
+        # 
+        # But it's also important to avoid stale files. Ideally only
+        # do this for files which are not likely to change.
+        clisock.write(b'Cache-control: public, max-age=3600\r\n')
         clisock.write(b'\r\n')
         while True:
             chunk = fh.read(64)
@@ -148,7 +156,9 @@ def dir_index(clisock, uri):
     title = b'Directory listing ' + escape_filename(uri) + b'/'
     clisock.write(b'<!DOCTYPE html><html><head><title>')
     clisock.write(title)
-    clisock.write(b'</title></head><body>')
+    clisock.write(b"""</title>
+        <link rel="stylesheet" href="/webui/ui.css">
+        <script src="/webui/ui.js" defer></script></head><body>""")
     clisock.write(b'<h1>');clisock.write(title);
     clisock.write(b'</h1><ul>')
     # Parent directory (if not top)
@@ -157,6 +167,7 @@ def dir_index(clisock, uri):
     # List files in the dir from uri.
     fnames = sorted(os.listdir(uri))
     # Show directories first.
+    odd = False
     for show_dir in (True, False):
         for fn in fnames:
             # Stat it, to check if it's a file or another
@@ -165,13 +176,26 @@ def dir_index(clisock, uri):
             is_dir = bool(s[0] & 0x4000)
             if is_dir == show_dir:
                 fn_escaped = escape_filename(fn)
+                if odd:
+                    cssclass = b'odd'
+                else:
+                    cssclass = b''
                 if show_dir:
                     fn_escaped += b'/'
-                clisock.write(b'<li><a href="')
+                    cssclass += b' d'
+                else:
+                    cssclass += b' f'
+                clisock.write(b'<li class="%s"><a href="' % (cssclass,))
                 clisock.write(fn_escaped)
                 clisock.write(b'">')
                 clisock.write(fn_escaped)
-                clisock.write(b'</a></li>\n')
+                clisock.write(b'</a>')
+                # file size:
+                if not is_dir:
+                    clisock.write(b'<span class="filemeta">%d b</span>'
+                        % (s[6],) )
+                clisock.write(b'</li>\n')
+                odd = (not odd)
         if show_dir:
             # Space between dirs and files
             clisock.write(b'</ul><ul>')
