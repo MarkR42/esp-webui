@@ -43,3 +43,10 @@ li > .filemeta {
     top: 0.5em;
     right: 0.5em;
 }
+
+a.actionsbut {
+    display: inline-block;
+    min-width: 1em;
+    margin: 2px;
+    border: 2px solid black;
+}
