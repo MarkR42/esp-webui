@@ -8,7 +8,7 @@
 import socket
 import os
 import gc
-from httphandlers import send_err, send_bad_request, handle_bad_method, handle_put
+from httphandlers import send_err, send_bad_request, handle_bad_method, handle_put, handle_post
 
 def accept_conn(sock):
     clisock, *junk = sock.accept()
@@ -57,6 +57,8 @@ def accept_conn(sock):
             handler = handle_get
         if method == b'PUT':
             handler = handle_put
+        if method == b'POST':
+            handler = handle_post
             
         print(firstline)
         if not uri.startswith(b'/'):
