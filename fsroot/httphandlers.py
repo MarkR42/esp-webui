@@ -85,7 +85,7 @@ def decode_urlencoded(inbytes, tempbuf):
 def show_free():
     print("free ram:", gc.mem_free())
 
-def handle_post(clisock, uri, content_length):
+def parse_post(clisock, uri, content_length):
     print("handle_post: content_length = ", content_length)
     if content_length > 1024:
         # Definitely going to be too big.
@@ -133,9 +133,7 @@ def handle_post(clisock, uri, content_length):
                 oldval.append(s)
     del tempbuf, fieldtups, fieldname, fieldvalue
     show_free()
+    print("post fields:")
     print(repr(fields))
-        
-    # todo: something useful with it.
-    print("handle_post: todo")
-    send_err(clisock, 500)
+    return fields
     

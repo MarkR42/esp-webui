@@ -8,6 +8,10 @@ body {
     font-size: 130%;
 }
 
+html.dragging {
+    background-color:pink;
+}
+
 h1 {
     background-color: lightgreen;
 }

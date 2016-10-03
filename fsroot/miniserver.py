@@ -8,7 +8,8 @@
 import socket
 import os
 import gc
-from httphandlers import send_err, send_bad_request, handle_bad_method, handle_put, handle_post
+import sys
+from httphandlers import send_err, send_bad_request, handle_bad_method, handle_put
 
 def accept_conn(sock):
     clisock, *junk = sock.accept()
@@ -70,8 +71,18 @@ def accept_conn(sock):
         return
     return handler(clisock, uri, content_length)
         
+def handle_post(clisock, uri, content_length):
+    # Serve uri to client.
+    if uri.startswith(b'/mod/'):
+        # Despatch module
+        return despatch_module(clisock, uri, content_length, 'do_post')
+    return handle_bad_method(clisock, uri, content_length)     
+        
 def handle_get(clisock, uri, content_length):
     # Serve uri to client.
+    if uri.startswith(b'/mod/'):
+        # Despatch module
+        return despatch_module(clisock, uri, content_length, 'do_get')
      
     # Check file exists.
     uri_without_slash = uri
@@ -213,6 +224,35 @@ def escape_filename(fn):
         else:
             b.append(c)
     return b
+
+def despatch_module(clisock, uri, content_length, handler_name):
+    # For GET, call a module.
+    # URI could be /mod/somemodule/some junk.
+    modname = uri[5:]
+    slashpos = modname.find(b'/')
+    if slashpos != -1:
+        modname = modname[:slashpos]
+
+    modname = 'mod_' + str(modname, 'ascii')
+    # Try to load module.
+    try:
+        # Use empty dict for globals, so we don't have a ref.
+        exec('import ' + modname, {})
+    except ImportError:
+        return send_err(clisock, 404, 'no module')
+    
+    try:
+        handler = getattr(sys.modules[modname], handler_name)
+    except AttributeError:
+        return send_err(clisock, 404, 'no handler')
+    
+    # despatch handler.
+    try:
+        handler(clisock, uri, content_length)
+    finally:
+        # Free module.
+        del sys.modules[modname]
+    clisock.close()
 
 def start_server():
     print("Starting web server")

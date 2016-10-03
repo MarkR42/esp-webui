@@ -90,6 +90,20 @@ function trigger_upload()
 
 function init_drop_events()
 {
+    /*
+    var dropelement = document.createElement("div");
+    dropelement.style.position = "absolute";
+    dropelement.style.display = "none";
+    dropelement.style.width = "80%";
+    dropelement.style.height = "80%";
+    dropelement.style.left = "10%";
+    dropelement.style.top = "10%";
+    dropelement.style.backgroundColor = "black";
+    dropelement.style.opacity = "0.5";
+    dropelement.id = "d42";
+    document.documentElement.appendChild(dropelement);
+    */
+    
     var target = document.documentElement;
     target.addEventListener("dragstart", function(e) { }, false);
     target.addEventListener("dragover", function(e) { 
@@ -97,9 +111,15 @@ function init_drop_events()
         e.dataTransfer.dropEffect = 'copy';
         return false;
         }, false);
-    target.addEventListener("dragenter", function(e) { }, false);    
-    target.addEventListener("dragleave", function(e) { }, false);
-    target.addEventListener("dragend", function(e) { }, false);
+    target.addEventListener("dragenter", function(e) { 
+        target.classList.add("dragging");
+        }, false);    
+    target.addEventListener("dragleave", function(e) {
+        target.classList.remove("dragging");
+         }, false);
+    target.addEventListener("dragend", function(e) { 
+        target.classList.remove("dragging");
+        }, false);
     //  Now the proper event: drop.
     target.addEventListener("drop", handle_drop, false);
     console.log("drop events ok");
@@ -113,6 +133,7 @@ function handle_drop(e) {
     e.stopPropagation();
     e.preventDefault();
     console.log("Dropped");
+    this.classList.remove("dragging");
     // Handle datatransfer.
     var files = e.dataTransfer.files;
     for (var i=0; i < files.length; i++) {
