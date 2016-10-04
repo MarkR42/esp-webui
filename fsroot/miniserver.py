@@ -9,11 +9,18 @@ import socket
 import os
 import gc
 import sys
+import time
+import network
+import ntptime
 from httphandlers import send_err, send_bad_request, handle_bad_method, handle_put
 
 def accept_conn(sock):
-    clisock, *junk = sock.accept()
-    del junk
+    try:
+        clisock, *junk = sock.accept()
+        del junk
+    except OSError:
+        # Timeout?
+        return
     # Set a timeout, so that if we don't receive a proper request
     # in the time, we can close the socket and serve someone else.
     clisock.settimeout(10.0)
@@ -156,8 +163,44 @@ def dir_redirect(clisock, uri):
     newuri = uri + b'/'
     clisock.write(b'Location: ' + newuri)
     clisock.write(b'\r\n\r\n')
+    clisock.close()        
+
+def maybe_despatch_module(clisock, uri, content_length, handler_name):
+    # For GET, call a module.
+    # URI could be /mod/somemodule/some junk.
+    if not uri.startswith(b'/mod/'):
+        return False
+    modname = uri[5:]
+    slashpos = modname.find(b'/')
+    if slashpos != -1:
+        modname = modname[:slashpos]
+
+    # Ensure module name starts with mod_ and is a unicode str.
+    modname = 'mod_' + str(modname, 'ascii')
+    # Try to load module.
+    try:
+        # Use empty dict for globals, so we don't have a ref.
+        exec('import ' + modname, {})
+    except ImportError:
+        send_err(clisock, 404, 'no module')
+        return True
+    
+    try:
+        handler = getattr(sys.modules[modname], handler_name)
+    except AttributeError:
+        send_err(clisock, 404, 'no handler')
+        return True
+    
+    # despatch handler.
+    try:
+        handler(clisock, uri, content_length)
+    finally:
+        # Free module.
+        del sys.modules[modname]
     clisock.close()
-        
+    return True
+
+# Show a directory index, for an existing directory.    
 def dir_index(clisock, uri):
     clisock.write(b'HTTP/1.0 200 OK\r\n'
         b'Content-type: text/html; charset=utf-8\r\n'
@@ -210,7 +253,7 @@ def dir_index(clisock, uri):
             # Space between dirs and files
             clisock.write(b'</ul><ul>')
     clisock.close()
-    
+
 def escape_filename(fn):
     b = bytearray()
     for c in fn:
@@ -224,53 +267,39 @@ def escape_filename(fn):
         else:
             b.append(c)
     return b
-
-def maybe_despatch_module(clisock, uri, content_length, handler_name):
-    # For GET, call a module.
-    # URI could be /mod/somemodule/some junk.
-    if not uri.startswith(b'/mod/'):
-        return False
-    modname = uri[5:]
-    slashpos = modname.find(b'/')
-    if slashpos != -1:
-        modname = modname[:slashpos]
-
-    # Ensure module name starts with mod_ and is a unicode str.
-    modname = 'mod_' + str(modname, 'ascii')
-    # Try to load module.
-    try:
-        # Use empty dict for globals, so we don't have a ref.
-        exec('import ' + modname, {})
-    except ImportError:
-        send_err(clisock, 404, 'no module')
-        return True
     
-    try:
-        handler = getattr(sys.modules[modname], handler_name)
-    except AttributeError:
-        send_err(clisock, 404, 'no handler')
-        return True
-    
-    # despatch handler.
-    try:
-        handler(clisock, uri, content_length)
-    finally:
-        # Free module.
-        del sys.modules[modname]
-    clisock.close()
-    return True
+def periodic_tasks():
+    # Called every few seconds
+    # Check if the time has been set.
+    epoch = time.mktime((2016,1,1,0,0,0,0,0,0))
+    time_is_set = ( time.time() > epoch )
+    if not time_is_set:
+        # Check if the network STA is configured.
+        sta = network.WLAN(network.STA_IF)
+        if sta.isconnected():
+            #Trying to sync with ntp
+            try:
+                ntptime.settime()
+            except OSError:
+                print("Failed to sync with ntp")
 
 def start_server():
     print("Starting web server")
     sock = socket.socket()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind( ('', 80) ); sock.listen(1)
+    sock.settimeout(5.0)
     
     print("Synchronous web server running...")
     gc.collect()
     print("gc.mem_free=", gc.mem_free())
+    t0 = time.ticks_ms()
     try:
         while True:
             accept_conn(sock)
+            now = time.ticks_ms()
+            if (now - t0) > 8000:
+                periodic_tasks()
+                t0 = now
     finally:
         sock.close()
