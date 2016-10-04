@@ -73,16 +73,16 @@ def accept_conn(sock):
         
 def handle_post(clisock, uri, content_length):
     # Serve uri to client.
-    if uri.startswith(b'/mod/'):
-        # Despatch module
-        return despatch_module(clisock, uri, content_length, 'do_post')
+    if maybe_despatch_module(clisock, uri, content_length, 'do_post'):
+        return # OK
+    # Otherwise bad method.
     return handle_bad_method(clisock, uri, content_length)     
         
 def handle_get(clisock, uri, content_length):
     # Serve uri to client.
-    if uri.startswith(b'/mod/'):
-        # Despatch module
-        return despatch_module(clisock, uri, content_length, 'do_get')
+    # If we are despatching a module, do that instead.
+    if maybe_despatch_module(clisock, uri, content_length, 'do_get'):
+        return
      
     # Check file exists.
     uri_without_slash = uri
@@ -225,26 +225,31 @@ def escape_filename(fn):
             b.append(c)
     return b
 
-def despatch_module(clisock, uri, content_length, handler_name):
+def maybe_despatch_module(clisock, uri, content_length, handler_name):
     # For GET, call a module.
     # URI could be /mod/somemodule/some junk.
+    if not uri.startswith(b'/mod/'):
+        return False
     modname = uri[5:]
     slashpos = modname.find(b'/')
     if slashpos != -1:
         modname = modname[:slashpos]
 
+    # Ensure module name starts with mod_ and is a unicode str.
     modname = 'mod_' + str(modname, 'ascii')
     # Try to load module.
     try:
         # Use empty dict for globals, so we don't have a ref.
         exec('import ' + modname, {})
     except ImportError:
-        return send_err(clisock, 404, 'no module')
+        send_err(clisock, 404, 'no module')
+        return True
     
     try:
         handler = getattr(sys.modules[modname], handler_name)
     except AttributeError:
-        return send_err(clisock, 404, 'no handler')
+        send_err(clisock, 404, 'no handler')
+        return True
     
     # despatch handler.
     try:
@@ -253,6 +258,7 @@ def despatch_module(clisock, uri, content_length, handler_name):
         # Free module.
         del sys.modules[modname]
     clisock.close()
+    return True
 
 def start_server():
     print("Starting web server")
